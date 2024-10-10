@@ -5,7 +5,7 @@ export PATH 					:= .bin:${PATH}
 export PWD 						:= $(shell pwd)
 export IMAGE_TAG 			:= $(if $(IMAGE_TAG),$(IMAGE_TAG),latest)
 
-GOLANGCI_LINT_VERSION = 1.55.2
+GOLANGCI_LINT_VERSION = 1.61.0
 
 GO_DEPENDENCIES = github.com/ory/go-acc \
 				  github.com/golang/mock/mockgen \
@@ -53,7 +53,7 @@ lint: .bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 .PHONY: test
 test: .bin/go-acc
 	make test-resetdb
-	source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,json1
+	source scripts/test-env.sh && go-acc ./... -- -failfast -timeout=20m -tags sqlite,sqlite_omit_load_extension
 	docker rm -f hydra_test_database_mysql
 	docker rm -f hydra_test_database_postgres
 	docker rm -f hydra_test_database_cockroach
@@ -64,9 +64,9 @@ test-resetdb: node_modules
 	docker rm --force --volumes hydra_test_database_mysql || true
 	docker rm --force --volumes hydra_test_database_postgres || true
 	docker rm --force --volumes hydra_test_database_cockroach || true
-	docker run --rm --name hydra_test_database_mysql  --platform linux/amd64 -p 3444:3306 -e MYSQL_ROOT_PASSWORD=secret -d mysql:8.0.26
-	docker run --rm --name hydra_test_database_postgres --platform linux/amd64 -p 3445:5432 -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=postgres -d postgres:11.8
-	docker run --rm --name hydra_test_database_cockroach --platform linux/amd64 -p 3446:26257 -d cockroachdb/cockroach:v22.1.10 start-single-node --insecure
+	docker run --rm --name hydra_test_database_mysql  -p 3444:3306 -e MYSQL_ROOT_PASSWORD=secret -d mysql:8.0
+	docker run --rm --name hydra_test_database_postgres -p 3445:5432 -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=postgres -d postgres:16
+	docker run --rm --name hydra_test_database_cockroach -p 3446:26257 -d cockroachdb/cockroach:latest-v24.1 start-single-node --insecure
 
 # Build local docker images
 .PHONY: docker
@@ -84,7 +84,7 @@ e2e: node_modules test-resetdb
 # Runs tests in short mode, without database adapters
 .PHONY: quicktest
 quicktest:
-	go test -failfast -short -tags sqlite,json1 ./...
+	go test -failfast -short -tags sqlite,sqlite_omit_load_extension ./...
 
 .PHONY: quicktest-hsm
 quicktest-hsm:
@@ -92,7 +92,7 @@ quicktest-hsm:
 
 .PHONY: refresh
 refresh:
-	UPDATE_SNAPSHOTS=true go test -failfast -short -tags sqlite,json1 ./...
+	UPDATE_SNAPSHOTS=true go test -failfast -short -tags sqlite,sqlite_omit_load_extension ./...
 
 authors:  # updates the AUTHORS file
 	curl https://raw.githubusercontent.com/ory/ci/master/authors/authors.sh | env PRODUCT="Ory Hydra" bash
@@ -177,15 +177,15 @@ $(MIGRATIONS_DST_DIR:%/=%-clean): $(MIGRATION_CLEAN_TARGETS)
 install-stable:
 	HYDRA_LATEST=$$(git describe --abbrev=0 --tags)
 	git checkout $$HYDRA_LATEST
-	GO111MODULE=on go install \
-		-tags sqlite,json1 \
+	go install \
+		-tags sqlite,sqlite_omit_load_extension \
 		-ldflags "-X github.com/ory/hydra/v2/driver/config.Version=$$HYDRA_LATEST -X github.com/ory/hydra/v2/driver/config.Date=`TZ=UTC date -u '+%Y-%m-%dT%H:%M:%SZ'` -X github.com/ory/hydra/v2/driver/config.Commit=`git rev-parse HEAD`" \
 		.
 	git checkout master
 
 .PHONY: install
 install:
-	GO111MODULE=on go install -tags sqlite,json1 .
+	go install -tags sqlite,sqlite_omit_load_extension .
 
 .PHONY: post-release
 post-release: .bin/yq
